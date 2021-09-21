@@ -1,10 +1,10 @@
-from Brain.model import PolicyModel, PredictorModel, TargetModel
+from .model import PolicyModel, PredictorModel, TargetModel
 import torch
 from torch import from_numpy
 import numpy as np
-from numpy import concatenate  # Make coder faster.
+from numpy import concatenate  # instead of np.concatenate to Make coder faster.
 from torch.optim.adam import Adam
-from Common.utils import mean_of_list, RunningMeanStd, clip_grad_norm_
+from Common import mean_of_list, RunningMeanStd
 
 torch.backends.cudnn.benchmark = True
 
@@ -115,8 +115,7 @@ class Brain:
     def optimize(self, loss):
         self.optimizer.zero_grad()
         loss.backward()
-        clip_grad_norm_(self.total_trainable_params)
-        # torch.nn.utils.clip_grad_norm_(self.total_trainable_params, 0.5)
+        torch.nn.utils.clip_grad_norm_(self.total_trainable_params, self.config["max_grad_norm"])
         self.optimizer.step()
 
     def get_gae(self, rewards, values, next_values, dones, gamma):

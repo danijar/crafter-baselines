@@ -1,13 +1,10 @@
 import chunkedfile
 chunkedfile.patch_pathlib_append(3600)
 
-from Common.runner import Worker
-from Common.play import Play
-from Common.config import get_params
-from Common.logger import Logger
+from Common import Worker, Logger, get_params
 from torch.multiprocessing import Process, Pipe
 import numpy as np
-from Brain.brain import Brain
+from Brain import Brain
 import gym
 import crafter  # noqa
 from tqdm import tqdm
@@ -159,8 +156,3 @@ if __name__ == '__main__':
                                  training_logs,
                                  total_int_rewards[0].mean(),
                                  total_action_probs[0].max(-1).mean())
-
-    else:
-        checkpoint = logger.load_weights()
-        play = Play(config["env_name"], brain, checkpoint)
-        play.evaluate()

@@ -2,9 +2,6 @@ import pathlib
 import numpy as np
 import gym
 import crafter
-from copy import deepcopy
-import torch
-from torch._six import inf
 from PIL import Image
 
 
@@ -56,20 +53,6 @@ def explained_variance(ypred, y):
     return np.nan if vary == 0 else 1 - np.var(y - ypred) / vary
 
 
-def make_atari(env_id, max_episode_steps, sticky_action=True, max_and_skip=True):
-    env = gym.make(env_id)
-    env._max_episode_steps = max_episode_steps * 4
-    assert 'NoFrameskip' in env.spec.id
-    if sticky_action:
-        env = StickyActionEnv(env)
-    if max_and_skip:
-        env = RepeatActionEnv(env)
-    env = MontezumaVisitedRoomEnv(env, 3)
-    env = AddRandomStateToInfoEnv(env)
-
-    return env
-
-
 def make_crafter(logdir, reward):
     env = crafter.Env(reward=reward)
     env = crafter.Recorder(
@@ -88,124 +71,42 @@ def make_crafter(logdir, reward):
 
 class PadImage(gym.Wrapper):
 
-  def step(self, action):
-    # 64x63x3 -> 84x84x3
-    obs, reward, done, info = self.unwrapped.step(action)
-    obs = np.pad(obs, ((10, 10), (10, 10), (0, 0)))
-    return obs, reward, done, info
+    def step(self, action):
+        # 64x63x3 -> 84x84x3
+        obs, reward, done, info = self.unwrapped.step(action)
+        obs = np.pad(obs, ((10, 10), (10, 10), (0, 0)))
+        return obs, reward, done, info
 
-  def reset(self):
-    obs = self.unwrapped.reset()
-    obs = np.pad(obs, ((10, 10), (10, 10), (0, 0)))
-    return obs
+    def reset(self):
+        obs = self.unwrapped.reset()
+        obs = np.pad(obs, ((10, 10), (10, 10), (0, 0)))
+        return obs
 
 
 class GrayScale(gym.Wrapper):
 
-  def step(self, action):
-    obs, reward, done, info = self.unwrapped.step(action)
-    obs = obs.mean(-1)[..., None]
-    return obs, reward, done, info
+    def step(self, action):
+        obs, reward, done, info = self.unwrapped.step(action)
+        obs = obs.mean(-1)[..., None]
+        return obs, reward, done, info
 
-  def reset(self):
-    obs = self.unwrapped.reset()
-    obs = obs.mean(-1)[..., None]
-    return obs
+    def reset(self):
+        obs = self.unwrapped.reset()
+        obs = obs.mean(-1)[..., None]
+        return obs
 
 
 class TransposeImage(gym.Wrapper):
 
-  def step(self, action):
-    obs, reward, done, info = self.unwrapped.step(action)
-    obs = obs.transpose((2, 0, 1))
-    return obs, reward, done, info
-
-  def reset(self):
-    obs = self.unwrapped.reset()
-    obs = obs.transpose((2, 0, 1))
-    return obs
-
-
-class StickyActionEnv(gym.Wrapper):
-    def __init__(self, env, p=0.25):
-        super(StickyActionEnv, self).__init__(env)
-        self.p = p
-        self.last_action = 0
-
     def step(self, action):
-        if np.random.uniform() < self.p:
-            action = self.last_action
-
-        self.last_action = action
-        return self.env.step(action)
+        obs, reward, done, info = self.unwrapped.step(action)
+        obs = obs.transpose((2, 0, 1))
+        return obs, reward, done, info
 
     def reset(self):
-        self.last_action = 0
-        return self.env.reset()
-
-
-class RepeatActionEnv(gym.Wrapper):
-    def __init__(self, env):
-        gym.Wrapper.__init__(self, env)
-        self.successive_frame = np.zeros((2,) + self.env.observation_space.shape, dtype=np.uint8)
-
-    def reset(self, **kwargs):
-        return self.env.reset(**kwargs)
-
-    def step(self, action):
-        reward, done = 0, False
-        for t in range(4):
-            state, r, done, info = self.env.step(action)
-            if t == 2:
-                self.successive_frame[0] = state
-            elif t == 3:
-                self.successive_frame[1] = state
-            reward += r
-            if done:
-                break
-
-        state = self.successive_frame.max(axis=0)
-        return state, reward, done, info
-
-
-class MontezumaVisitedRoomEnv(gym.Wrapper):
-    def __init__(self, env, room_address):
-        gym.Wrapper.__init__(self, env)
-        self.room_address = room_address
-        self.visited_rooms = set()  # Only stores unique numbers.
-
-    def step(self, action):
-        state, reward, done, info = self.env.step(action)
-        ram = self.unwrapped.ale.getRAM()
-        assert len(ram) == 128
-        self.visited_rooms.add(ram[self.room_address])
-        if done:
-            if "episode" not in info:
-                info["episode"] = {}
-            info["episode"].update(visited_room=deepcopy(self.visited_rooms))
-            self.visited_rooms.clear()
-        return state, reward, done, info
-
-    def reset(self):
-        return self.env.reset()
-
-
-class AddRandomStateToInfoEnv(gym.Wrapper):
-    def __init__(self, env):
-        gym.Wrapper.__init__(self, env)
-        self.rng_at_episode_start = deepcopy(self.unwrapped.np_random)
-
-    def step(self, action):
-        state, reward, done, info = self.env.step(action)
-        if done:
-            if 'episode' not in info:
-                info['episode'] = {}
-            info['episode']['rng_at_episode_start'] = self.rng_at_episode_start
-        return state, reward, done, info
-
-    def reset(self):
-        self.rng_at_episode_start = deepcopy(self.unwrapped.np_random)
-        return self.env.reset()
+        obs = self.unwrapped.reset()
+        obs = obs.transpose((2, 0, 1))
+        return obs
 
 
 class RunningMeanStd:
@@ -252,23 +153,3 @@ class RewardForwardFilter(object):
         else:
             self.rewems = self.rewems * self.gamma + rews
         return self.rewems
-
-
-def clip_grad_norm_(parameters, norm_type: float = 2.0):
-    """
-    This is the official clip_grad_norm implemented in pytorch but the max_norm part has been removed.
-    https://github.com/pytorch/pytorch/blob/52f2db752d2b29267da356a06ca91e10cd732dbc/torch/nn/utils/clip_grad.py#L9
-    """
-    if isinstance(parameters, torch.Tensor):
-        parameters = [parameters]
-    parameters = [p for p in parameters if p.grad is not None]
-    norm_type = float(norm_type)
-    if len(parameters) == 0:
-        return torch.tensor(0.)
-    device = parameters[0].grad.device
-    if norm_type == inf:
-        total_norm = max(p.grad.detach().abs().max().to(device) for p in parameters)
-    else:
-        total_norm = torch.norm(torch.stack([torch.norm(p.grad.detach(), norm_type).to(device) for p in parameters]),
-                                norm_type)
-    return total_norm
