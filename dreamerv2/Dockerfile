@@ -1,4 +1,4 @@
-FROM tensorflow/tensorflow:2.6.0-gpu
+FROM tensorflow/tensorflow:2.4.2-gpu
 
 RUN apt-get update && apt-get install -y \
   python3-pip \
@@ -6,8 +6,9 @@ RUN apt-get update && apt-get install -y \
 
 RUN pip3 install --no-cache-dir \
   crafter>=1.6.2 \
-  dreamerv2>=2.0.7 \
-  gym
+  dreamerv2>=2.2.0 \
+  gym \
+  tensorflow_probability==0.12.2
 
 COPY . /app
 WORKDIR /app
